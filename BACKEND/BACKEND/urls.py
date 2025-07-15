@@ -21,5 +21,5 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('CHITGROUP.urls')),  # Routes all /api/ URLs to chit app
     path('users/',include('user.urls')),
-    path('auctions/',include('auction.urls'))
+    path('auctions/',include('auction.urls')),
 ]

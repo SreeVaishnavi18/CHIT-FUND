@@ -1,3 +1,4 @@
+from django.http import JsonResponse
 from django.shortcuts import render
 
 # Create your views here.
@@ -9,7 +10,6 @@ from .models import ChitGroup
 from datetime import datetime
 from db_conection import db
 chits_collection = db['chit_groups']
-users_collection= db['user']
 
 @api_view(['POST'])
 def create_chit_group(request):
@@ -23,18 +23,27 @@ def create_chit_group(request):
         if data.get("created_by") != "admin123":
             return Response({"error": "Only admins can create chit groups."}, status=403)
 
+        start_date = data.get("start_date")
+        if isinstance(start_date, datetime):
+            start_datetime = start_date
+        else:
+            start_datetime = datetime.combine(start_date, datetime.min.time())
+
         chit_group = {
             "group_name": data.get("group_name"),
             "chit_value": data.get("chit_value"),
             "duration": data.get("duration"),
             "monthly_contribution": data.get("monthly_contribution"),
             "total_members": data.get("total_members"),
-            "start_date": data.get("start_date", datetime.utcnow().isoformat()),
+            "start_date": start_datetime,   # ✅ fixed
             "created_by": data.get("created_by"),
             "members": [],
             "status": "active",
-            "current_month": 1
+            "current_month": 1,
+            "min_bid_start_percent": 50,
+            "min_bid_step": 5
         }
+
 
         chits_collection.insert_one(chit_group)
         return Response({"message": "Chit group created successfully."})
@@ -62,28 +71,12 @@ def join_chit_group(request):
         {"$push": {"members": username}}
     )
 
-    users_collection.update_one(
-        {"username": username},
-        {"$push": {
-            "joined_chits": {
-                "chit_group_id": group["_id"],
-                "joined_on": datetime.utcnow(),
-                "has_paid_initial": False,
-                "has_won": False,
-                "bids": [],
-                "invoices": []
-            }
-        }}
-    )
-
-
     return Response({"message": f"{username} joined the group {group_name}."})
 
 @api_view(['GET'])
 def list_chit_groups(request):
-    groups = list(chits_collection.find({}, {"_id": 0}))  
-    return Response(groups)
-
+    groups = list(chits_collection.find({}))  # don't filter out _id here
+    return JsonResponse(groups, safe=False, json_dumps_params={"default": str})
 
 @api_view(['GET'])
 def list_available_groups(request, username):
@@ -94,4 +87,4 @@ def list_available_groups(request, username):
         },
         {"_id": 0}
     ))
-    return Response(groups)
+    return JsonResponse(groups, safe=False, json_dumps_params={"default": str})

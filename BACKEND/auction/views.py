@@ -14,6 +14,7 @@ auctions_collection = db['auctions']
 chits_collection = db['chit_groups']
 users_collection = db['user']
 invoices_collection = db['invoices']
+winners_collection = db['winners']
 
 # Helper
 def safe_objectid(val):
@@ -47,10 +48,7 @@ class ActiveAuctionsView(View):
     def get(self, request):
         try:
             auctions = list(auctions_collection.find({"status": "active"}))
-            for auction in auctions:
-                auction['_id'] = str(auction['_id'])
-                auction['chit_group_id'] = str(auction['chit_group_id'])
-            return JsonResponse(auctions, safe=False)
+            return JsonResponse(serialize_doc(auctions), safe=False)
         except PyMongoError as e:
             return JsonResponse({"error": str(e)}, status=500)
 
@@ -67,7 +65,8 @@ class AuctionDetailView(View):
 
         auction['_id'] = str(auction['_id'])
         auction['chit_group_id'] = str(auction['chit_group_id'])
-        return JsonResponse(auction, status=200)
+        return JsonResponse(serialize_doc(auction), status=200)
+
 
 @method_decorator(csrf_exempt, name='dispatch')
 class StartAuctionView(View):
@@ -101,54 +100,193 @@ class CloseAuctionView(View):
             return JsonResponse({"error": "Invalid auction ID."}, status=400)
 
         auction = auctions_collection.find_one({"_id": obj_id})
-        if not auction:
-            return JsonResponse({"error": "Auction not found."}, status=404)
-
-        if auction['status'] != 'active':
-            return JsonResponse({"error": "Auction already closed."}, status=400)
-
-        bids = auction.get("bids", [])
-        if not bids:
-            return JsonResponse({"error": "No bids to process."}, status=400)
-
-        winner = min(bids, key=lambda b: b['amount'])
-        winner_user_id = winner['user_id']
+        if not auction or auction['status'] != 'active':
+            return JsonResponse({"error": "Auction not active or not found."}, status=404)
 
         chit_group = chits_collection.find_one({"_id": auction['chit_group_id']})
         if not chit_group:
             return JsonResponse({"error": "Chit group not found."}, status=404)
 
+        current_month = chit_group["current_month"]
         members = chit_group.get("members", [])
-        invoices = []
-        for member_name in members:
-            user = users_collection.find_one({"name": member_name})
+        num_members = chit_group.get("total_members", len(members))
+        monthly_contribution = chit_group["monthly_contribution"]
+        monthly_bids = chit_group.get("monthly_bid_values", {})
+
+        invoices_created = 0
+
+        # Organizer Commission Month (Month 2)
+        if current_month == 2:
+            commission_amount = int(monthly_bids.get(str(current_month), 0))
+            per_user_dividend = commission_amount // num_members
+
+            for user_id in members:
+                user = users_collection.find_one({"_id": user_id})
+                if not user:
+                    continue
+
+                invoice = {
+                    "user_id": user_id,
+                    "chit_group_id": chit_group["_id"],
+                    "auction_id": auction["_id"],
+                    "month": current_month,
+                    "type": "monthly",
+                    "amount": per_user_dividend,
+                    "issued_on": datetime.utcnow(),
+                    "details": {
+                        "dividend": per_user_dividend,
+                        "is_winner": False,
+                        "note": "Organizer commission month"
+                    }
+                }
+
+                invoices_collection.insert_one(invoice)
+                invoices_created += 1
+
+            auctions_collection.update_one({"_id": obj_id}, {
+                "$set": {
+                    "status": "closed",
+                    "winner": "Organizer (Commission)",
+                    "end_time": datetime.utcnow()
+                }
+            })
+
+            chits_collection.update_one({"_id": chit_group["_id"]}, {
+                "$set": {"current_month": current_month + 1}
+            })
+
+            return JsonResponse({
+                "message": "Organizer commission month processed. No user winner.",
+                "dividend": per_user_dividend,
+                "invoices_generated": invoices_created
+            })
+
+        # Final Month – Auto Winner
+        previous_winners = chit_group.get("winners", [])
+        remaining_users = [uid for uid in members if uid not in previous_winners]
+
+        if current_month == chit_group["duration"]:
+            if len(remaining_users) != 1:
+                return JsonResponse({"error": "Cannot determine unique final winner."}, status=400)
+
+            winner_id = remaining_users[0]
+            bid_amount = int(monthly_bids.get(str(current_month), monthly_contribution))
+            per_user_dividend = bid_amount // num_members
+
+            for user_id in members:
+                user = users_collection.find_one({"_id": user_id})
+                if not user:
+                    continue
+
+                invoice = {
+                    "user_id": user_id,
+                    "chit_group_id": chit_group["_id"],
+                    "auction_id": auction["_id"],
+                    "month": current_month,
+                    "type": "monthly",
+                    "amount": per_user_dividend,
+                    "issued_on": datetime.utcnow(),
+                    "details": {
+                        "dividend": per_user_dividend,
+                        "is_winner": (str(user_id) == str(winner_id)),
+                        "note": "Final month – auto winner"
+                    }
+                }
+
+                invoices_collection.insert_one(invoice)
+                invoices_created += 1
+
+            chits_collection.update_one({"_id": chit_group["_id"]}, {
+                "$push": {"winners": winner_id},
+                "$set": {"current_month": current_month + 1, "status": "completed", "members": []}
+            })
+
+            auctions_collection.update_one({"_id": obj_id}, {
+                "$set": {
+                    "status": "closed",
+                    "winner": {
+                        "user_id": str(winner_id),
+                        "amount": bid_amount,
+                        "note": "Auto-assigned winner in final month"
+                    },
+                    "end_time": datetime.utcnow()
+                }
+            })
+
+            return JsonResponse({
+                "message": "Final month processed. Winner auto-assigned.",
+                "winner": str(winner_id),
+                "bid_amount": bid_amount,
+                "per_user_dividend": per_user_dividend,
+                "invoices_generated": invoices_created
+            })
+
+        # Regular Auction Month
+        bids = auction.get("bids", [])
+        if not bids:
+            return JsonResponse({"error": "No bids found."}, status=400)
+
+        valid_bids = [b for b in bids if b["user_id"] not in previous_winners]
+        if not valid_bids:
+            return JsonResponse({"error": "No valid bids (previous winners excluded)."}, status=400)
+
+        winner_bid = min(valid_bids, key=lambda b: b["amount"])
+        winner_id = winner_bid["user_id"]
+        bid_amount = winner_bid["amount"]
+        per_user_dividend = bid_amount // num_members
+
+        for user_id in members:
+            user = users_collection.find_one({"_id": user_id})
             if not user:
                 continue
+
+            is_winner = (str(user_id) == str(winner_id))
+
             invoice = {
-                "user_id": user["_id"],
+                "user_id": user_id,
                 "chit_group_id": chit_group["_id"],
-                "amount": chit_group["monthly_contribution"],
-                "gst": round(0.18 * chit_group["monthly_contribution"], 2),
-                "month": chit_group["current_month"],
-                "issued_on": datetime.utcnow()
+                "auction_id": auction["_id"],
+                "month": current_month,
+                "type": "monthly",
+                "amount": per_user_dividend,
+                "issued_on": datetime.utcnow(),
+                "details": {
+                    "dividend": per_user_dividend,
+                    "is_winner": is_winner
+                }
             }
+
             invoices_collection.insert_one(invoice)
-            invoices.append(invoice)
+            invoices_created += 1
 
-        auctions_collection.update_one(
-            {"_id": obj_id},
-            {"$set": {"status": "closed", "winner": winner, "end_time": datetime.utcnow()}}
-        )
+        auctions_collection.update_one({"_id": obj_id}, {
+            "$set": {
+                "status": "closed",
+                "winner": {
+                    "user_id": str(winner_id),
+                    "amount": bid_amount
+                },
+                "end_time": datetime.utcnow()
+            }
+        })
 
-        chits_collection.update_one(
-            {"_id": auction['chit_group_id']},
-            {"$inc": {"current_month": 1}}
-        )
+        chits_collection.update_one({"_id": chit_group["_id"]}, {
+            "$push": {"winners": winner_id},
+            "$set": {"current_month": current_month + 1}
+        })
+
+        # Optional safeguard
+        if (current_month + 1) > chit_group["duration"]:
+            chits_collection.update_one({"_id": chit_group["_id"]}, {
+                "$set": {"status": "completed", "members": []}
+            })
 
         return JsonResponse({
-            "message": "Auction closed.",
-            "winner": winner,
-            "invoices_generated": len(invoices)
+            "message": "Auction closed successfully.",
+            "winner": str(winner_id),
+            "bid_amount": bid_amount,
+            "per_user_dividend": per_user_dividend,
+            "invoices_generated": invoices_created
         })
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -181,16 +319,57 @@ class SubmitBidView(View):
                 if bid["user_id"] == user_id:
                     return JsonResponse({"error": "User already placed a bid."}, status=400)
 
+                      
+            chit_group = chits_collection.find_one({"_id": auction['chit_group_id']})
+            if not chit_group:
+                return JsonResponse({"error": "Chit group not found."}, status=404)
+
+            
+            previous_winners = chit_group.get("winners", [])
+            if str(user_id) in [str(winner_id) for winner_id in previous_winners]:
+                return JsonResponse({"error": "Previous winners are not allowed to bid again."}, status=403)
+
+            current_month = chit_group.get("current_month", 1)
+            monthly_bids = chit_group.get("monthly_bid_values", {})
+
+
+            current_month = chit_group.get("current_month", 1)
+            monthly_bids = chit_group.get("monthly_bid_values", {})
+
+            if chit_group.get("duration") == chit_group.get("current_month"):
+                return JsonResponse({"error": "This month is the final month. Bidding not allowed."})
+
+            # Must be string keys in MongoDB
+            month_bid_entry = monthly_bids.get(str(current_month))
+
+            if month_bid_entry is None:
+                return JsonResponse({"error": f"No bid value configured for month {current_month}."}, status=400)
+
+            if current_month == 2:
+                return JsonResponse({
+                    "error": "This month is reserved for organization. Bidding not allowed."
+                }, status=403)
+
+            allowed_bid = int(month_bid_entry)
+
+            if amount > allowed_bid:
+                return JsonResponse({
+                    "error": f"Bid too high. Max allowed for month {current_month} is ₹{allowed_bid}."
+                }, status=400)
+
             bid = {
                 "user_id": user_id,
                 "amount": amount,
                 "bid_time": datetime.utcnow()
             }
+
             auctions_collection.update_one(
                 {"_id": auction_obj_id},
                 {"$push": {"bids": bid}}
             )
+
             return JsonResponse({"message": "Bid placed successfully."})
+
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
 
@@ -230,8 +409,13 @@ class AuctionWinnerView(View):
         if not winner:
             return JsonResponse({"message": "No winner selected yet."}, status=200)
 
-        winner["user_id"] = str(winner["user_id"])
-        return JsonResponse(winner)
+        # 🛡️ Check if winner is a dict or string
+        if isinstance(winner, dict):
+            winner["user_id"] = str(winner["user_id"])
+            return JsonResponse(winner)
+        else:
+            return JsonResponse({"winner": winner})  # e.g., "Organizer (Commission)"
+
     
 
 
@@ -254,11 +438,8 @@ class UserInvoicesView(View):
             return JsonResponse({"error": "Invalid user ID."}, status=400)
 
         invoices = list(invoices_collection.find({"user_id": obj_id}))
-        for inv in invoices:
-            inv["_id"] = str(inv["_id"])
-            inv["user_id"] = str(inv["user_id"])
-            inv["chit_group_id"] = str(inv["chit_group_id"])
-        return JsonResponse(invoices, safe=False)
+        return JsonResponse(serialize_doc(invoices), safe=False)
+
 
 @method_decorator(csrf_exempt, name='dispatch')
 class InvoiceDetailView(View):
@@ -271,7 +452,4 @@ class InvoiceDetailView(View):
         if not invoice:
             return JsonResponse({"error": "Invoice not found."}, status=404)
 
-        invoice["_id"] = str(invoice["_id"])
-        invoice["user_id"] = str(invoice["user_id"])
-        invoice["chit_group_id"] = str(invoice["chit_group_id"])
-        return JsonResponse(invoice, status=200)
+        return JsonResponse(serialize_doc(invoice), status=200)
