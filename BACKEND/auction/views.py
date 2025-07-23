@@ -90,7 +90,7 @@ class StartAuctionView(View):
             "bids": []
         }
         auctions_collection.insert_one(auction_doc)
-        return JsonResponse({"message": "Auction started."}, status=201)
+        return JsonResponse(serialize_doc(auction_doc), status=201)
 
 @method_decorator(csrf_exempt, name='dispatch')
 class CloseAuctionView(View):

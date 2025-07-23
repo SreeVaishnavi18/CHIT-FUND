@@ -1,3 +1,4 @@
+from bson import ObjectId
 from django.http import JsonResponse
 from django.shortcuts import render
 
@@ -10,7 +11,7 @@ from .models import ChitGroup
 from datetime import datetime
 from db_conection import db
 chits_collection = db['chit_groups']
-
+users_collection = db['user']
 @api_view(['POST'])
 def create_chit_group(request):
     # data = request.data
@@ -49,29 +50,53 @@ def create_chit_group(request):
         return Response({"message": "Chit group created successfully."})
     return Response(serializer.errors, status=400)
 
-
 @api_view(['POST'])
 def join_chit_group(request):
     data = request.data
-    group_name = data.get("group_name")
-    username = data.get("username")
+    group_id = data.get("chit_group_id")  # This should be a string ObjectId
+    user_id = data.get("user_id")
+
+    if not group_id or not user_id:
+        return Response({"error": "Missing group_id or user_id."}, status=400)
+
+    try:
+        group_obj_id = ObjectId(group_id)
+        user_obj_id = ObjectId(user_id)
+    except Exception as e:
+        return Response({"error": "Invalid ObjectId."}, status=400)
 
     # Check if group exists
-    group = chits_collection.find_one({"group_name": group_name})
+    group = chits_collection.find_one({"_id": group_obj_id})
     if not group:
         return Response({"error": "Chit group not found."}, status=404)
 
-    # Check if user is already a member
-    if username in group["members"]:
-        return Response({"message": "Already joined this group."}, status=400)
+    # Add user to group's members list if not already
+    if user_id not in group.get("members", []):
+        chits_collection.update_one(
+            {"_id": group_obj_id},
+            {"$addToSet": {"members": user_id}}  # Avoids duplicates
+        )
 
-    # Add user to members list
-    chits_collection.update_one(
-        {"group_name": group_name},
-        {"$push": {"members": username}}
+    # Prepare joined chit object
+    joined_chit = {
+        "chit_group_id": group_obj_id,
+        "joined_on": datetime.utcnow(),
+        "has_paid_initial": False,
+        "has_won": False,
+        "bids": [],
+        "invoices": []
+    }
+
+    # Add to user's joined_chits array
+    result = users_collection.update_one(
+        {"_id": user_obj_id},
+        {"$addToSet": {"joined_chits": joined_chit}}
     )
 
-    return Response({"message": f"{username} joined the group {group_name}."})
+    if result.modified_count == 0:
+        return Response({"message": "User already joined this chit group."}, status=200)
+
+    return Response({"message": "User successfully joined chit group."}, status=200)
 
 @api_view(['GET'])
 def list_chit_groups(request):
@@ -85,6 +110,5 @@ def list_available_groups(request, username):
             "members": {"$ne": username}, 
             "status": "active"
         },
-        {"_id": 0}
     ))
     return JsonResponse(groups, safe=False, json_dumps_params={"default": str})
