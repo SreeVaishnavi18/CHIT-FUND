@@ -43,7 +43,7 @@ def create_chit_group(request):
             "current_month": 1,
             "min_bid_start_percent": 50,
             "min_bid_step": 5,
-            "prize_distribution": data.get("prize_distribution", [])
+            "prize_money": data.get("prize_money", [])
         }
 
 
