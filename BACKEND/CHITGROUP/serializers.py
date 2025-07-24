@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 class ChitGroupSerializer(serializers.Serializer):
+    _id = serializers.SerializerMethodField()
     group_name = serializers.CharField(max_length=100)
     chit_value = serializers.IntegerField()
     duration = serializers.IntegerField()
