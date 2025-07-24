@@ -55,7 +55,7 @@ def create_chit_group(request):
 @api_view(['POST'])
 def join_chit_group(request):
     data = request.data
-    group_id = data.get("chit_group_id")  # This should be a string ObjectId
+    group_id = data.get("chit_group_id")  
     user_id = data.get("user_id")
 
     if not group_id or not user_id:
@@ -110,10 +110,15 @@ def list_chit_groups(request):
 
 @api_view(['GET'])
 def list_available_groups(request, username):
-    groups = list(chits_collection.find(
-        {
-            "members": {"$ne": username}, 
-            "status": "active"
-        },
-    ))
-    return JsonResponse(groups, safe=False, json_dumps_params={"default": str})
+    groups = list(chits_collection.find({
+        "members": {"$ne": username}, 
+        "status": "active"
+    }))
+
+    auction_groups = [g for g in groups if g.get("type") == "auctionbased"]
+    lottery_groups = [g for g in groups if g.get("type") == "lotterybased"]
+
+    return JsonResponse({
+        "auctionbased": auction_groups,
+        "lotterybased": lottery_groups
+    }, safe=False, json_dumps_params={"default": str})
