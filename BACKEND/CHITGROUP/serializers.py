@@ -6,6 +6,7 @@ class ChitGroupSerializer(serializers.Serializer):
     duration = serializers.IntegerField()
     monthly_contribution = serializers.IntegerField()
     total_members = serializers.IntegerField()
+    type = serializers.ChoiceField(choices=["lotterybased", "auctionbased"])  
     created_by = serializers.CharField()
     start_date = serializers.DateField(required=False)
     status = serializers.CharField(default="active")
