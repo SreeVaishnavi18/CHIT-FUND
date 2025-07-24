@@ -35,6 +35,7 @@ def create_chit_group(request):
             "duration": data.get("duration"),
             "monthly_contribution": data.get("monthly_contribution"),
             "total_members": data.get("total_members"),
+            "type": data.get('type'),
             "start_date": start_datetime,   # ✅ fixed
             "created_by": data.get("created_by"),
             "members": [],
