@@ -16,6 +16,7 @@ class ObjectIdField(serializers.Field):
 class JoinedChitSerializer(serializers.Serializer):
     chit_group_id = ObjectIdField()
     joined_on = serializers.DateTimeField()
+    group_name = serializers.CharField(required=False)
     has_paid_initial = serializers.BooleanField()
     has_won = serializers.BooleanField()
     bids = serializers.ListField(child=ObjectIdField(), required=False)

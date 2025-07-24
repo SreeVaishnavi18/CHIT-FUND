@@ -71,6 +71,8 @@ def join_chit_group(request):
     if not group:
         return Response({"error": "Chit group not found."}, status=404)
 
+    group_name = group.get("group_name", "Unnamed Group")  # Fallback if not found
+
     # Add user to group's members list if not already
     if user_id not in group.get("members", []):
         chits_collection.update_one(
@@ -81,6 +83,7 @@ def join_chit_group(request):
     # Prepare joined chit object
     joined_chit = {
         "chit_group_id": group_obj_id,
+        "group_name": group_name,
         "joined_on": datetime.utcnow(),
         "has_paid_initial": False,
         "has_won": False,
