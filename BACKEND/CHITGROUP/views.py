@@ -80,11 +80,13 @@ def join_chit_group(request):
             {"_id": group_obj_id},
             {"$addToSet": {"members": user_id}}  # Avoids duplicates
         )
+    group_type = group.get("type", "unknown")  
 
     # Prepare joined chit object
     joined_chit = {
         "chit_group_id": group_obj_id,
         "group_name": group_name,
+        "type": group_type,
         "joined_on": datetime.utcnow(),
         "has_paid_initial": False,
         "has_won": False,
