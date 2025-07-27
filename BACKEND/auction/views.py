@@ -1,4 +1,5 @@
 # auctions/views.py (updated)
+import random
 from django.http import JsonResponse
 from django.views import View
 from django.utils.decorators import method_decorator
@@ -90,17 +91,12 @@ class ActiveAuctionsView(View):
     def get(self, request):
         try:
             auctions = list(auctions_collection.find({"status": "active"}))
-            
             # Serialize all ObjectIds and nested fields
             cleaned_auctions = convert_object_ids(auctions)
             serializer = AuctionSerializer(cleaned_auctions, many=True)
             return JsonResponse(convert_object_ids(auctions), safe=False, json_dumps_params={'default': str})
-            return JsonResponse(serialize_doc(auctions), safe=False)
         except PyMongoError as e:
             return JsonResponse({"error": str(e)}, status=500)  
-            return JsonResponse({"error": str(e)}, status=500)  
-
-
 
 @method_decorator(csrf_exempt, name='dispatch')
 class AuctionDetailView(View):
@@ -277,7 +273,35 @@ class CloseAuctionView(View):
                 "per_user_dividend": per_user_dividend,
                 "invoices_generated": invoices_created
             })
+        if chit_group.get("type") == "lotterybased":
+            bidders = [bid["user_id"] for bid in auction.get("bids", [])]
+            unique_bidders = list(set(bidders))
 
+            if not unique_bidders:
+                return JsonResponse({"error": "No users participated in bidding."}, status=400)
+
+            winner_id = random.choice(unique_bidders)
+
+            auctions_collection.update_one({"_id": obj_id}, {
+                "$set": {
+                    "status": "closed",
+                    "winner": {
+                        "user_id": str(winner_id),
+                        "note": "Randomly chosen in lottery-based auction"
+                    },
+                    "end_time": datetime.utcnow()
+                }
+            })
+
+            chits_collection.update_one({"_id": chit_group["_id"]}, {
+                "$push": {"winners": winner_id},
+                "$set": {"current_month": current_month + 1}
+            })
+
+            return JsonResponse({
+                "message": "Lottery-based auction closed.",
+                "winner": str(winner_id)
+            })
         # Regular Auction Month
         bids = auction.get("bids", [])
         if not bids:
@@ -376,12 +400,12 @@ class SubmitBidView(View):
                 if bid["user_id"] == user_id:
                     return JsonResponse({"error": "User already placed a bid."}, status=400)
 
-                      
             chit_group = chits_collection.find_one({"_id": auction['chit_group_id']})
             if not chit_group:
                 return JsonResponse({"error": "Chit group not found."}, status=404)
 
-            
+            chit_type = chit_group.get("type", "auctionbased")
+
             previous_winners = chit_group.get("winners", [])
             if str(user_id) in [str(winner_id) for winner_id in previous_winners]:
                 return JsonResponse({"error": "Previous winners are not allowed to bid again."}, status=403)
@@ -389,23 +413,35 @@ class SubmitBidView(View):
             current_month = chit_group.get("current_month", 1)
             monthly_bids = chit_group.get("monthly_bid_values", {})
 
-
-            current_month = chit_group.get("current_month", 1)
-            monthly_bids = chit_group.get("monthly_bid_values", {})
-
-            if chit_group.get("duration") == chit_group.get("current_month"):
+            if chit_group.get("duration") == current_month:
                 return JsonResponse({"error": "This month is the final month. Bidding not allowed."})
-
-            # Must be string keys in MongoDB
-            month_bid_entry = monthly_bids.get(str(current_month))
-
-            if month_bid_entry is None:
-                return JsonResponse({"error": f"No bid value configured for month {current_month}."}, status=400)
 
             if current_month == 2:
                 return JsonResponse({
                     "error": "This month is reserved for organization. Bidding not allowed."
                 }, status=403)
+
+            # 👇 Handle bidding logic differently for lotterybased
+            if chit_type == "lotterybased":
+                # For lottery-based, no strict bid amount check
+                bid = {
+                    "user_id": user_id,
+                    "amount": amount,
+                    "bid_time": datetime.utcnow()
+                }
+
+                auctions_collection.update_one(
+                    {"_id": auction_obj_id},
+                    {"$push": {"bids": bid}}
+                )
+
+                return JsonResponse({"message": "Lottery request submitted successfully."})
+
+            # 👇 Regular auction logic
+            # Must be string keys in MongoDB
+            month_bid_entry = monthly_bids.get(str(current_month))
+            if month_bid_entry is None:
+                return JsonResponse({"error": f"No bid value configured for month {current_month}."}, status=400)
 
             allowed_bid = int(month_bid_entry)
 

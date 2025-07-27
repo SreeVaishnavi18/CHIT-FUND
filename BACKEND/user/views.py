@@ -52,7 +52,8 @@ def login_user(request):
 @method_decorator(csrf_exempt, name='dispatch')
 class UserMeView(View):
     def get(self, request):
-        user_id = request.headers.get("X-User-ID")
+        user_id = request.GET.get("user_id")
+
         if not user_id:
             return JsonResponse({"error": "Unauthorized"}, status=401)
 
