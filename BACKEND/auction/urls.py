@@ -5,6 +5,7 @@ from .views import (
     AuctionDetailView,
     AuctionWinnerView,
     InvoiceDetailView,
+    MarkPaymentDoneView,
     StartAuctionView,
     CloseAuctionView,
     AuctionBidsView,
@@ -26,4 +27,5 @@ urlpatterns = [
     path('winners/<str:user_id>/', UserWinsView.as_view(), name='user-winners'),
     path('invoices/<str:user_id>/', UserInvoicesView.as_view(), name='user-invoices'),
     path('invoices/detail/<str:invoice_id>/', InvoiceDetailView.as_view(), name='invoice-detail'),
+    path('<str:auction_id>/mark-paid/', MarkPaymentDoneView.as_view()),
 ]
