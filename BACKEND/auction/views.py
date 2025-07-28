@@ -11,7 +11,7 @@ from db_conection import db
 from .serializers import AuctionSerializer, BidSerializer
 import json
 from rest_framework.response import Response
-from rest_framework.response import Response
+
 
 auctions_collection = db['auctions']
 chits_collection = db['chit_groups']
@@ -27,6 +27,7 @@ def safe_objectid(val):
         return None
     
     
+
 def serialize_doc(doc):
     if isinstance(doc, list):
         return [serialize_doc(d) for d in doc]
@@ -36,8 +37,6 @@ def serialize_doc(doc):
         for k, v in doc.items():
             if isinstance(v, ObjectId):
                 serialized[k] = str(v)
-            elif isinstance(v, datetime):
-                serialized[k] = v.isoformat()
             elif isinstance(v, datetime):
                 serialized[k] = v.isoformat()
             elif isinstance(v, list):
@@ -68,6 +67,7 @@ def convert_object_ids(doc):
                 new_doc[k] = v
         return new_doc
     return doc
+  
 def convert_object_ids(doc):
     if isinstance(doc, list):
         return [convert_object_ids(item) for item in doc]
@@ -86,6 +86,7 @@ def convert_object_ids(doc):
                 new_doc[k] = v
         return new_doc
     return doc
+
 @method_decorator(csrf_exempt, name='dispatch')
 class ActiveAuctionsView(View):
     def get(self, request):
@@ -207,17 +208,12 @@ class CloseAuctionView(View):
                 "invoices_generated": invoices_created
             })
 
-        # Final Month – Auto Winner
-        # previous_winners = chit_group.get("winners", [])
-        # remaining_users = [uid for uid in members if uid not in previous_winners]
-        previous_winners = [str(wid) for wid in chit_group.get("winners", [])]
+
         # previous_winners = chit_group.get("winners", [])
         # remaining_users = [uid for uid in members if uid not in previous_winners]
         previous_winners = [str(wid) for wid in chit_group.get("winners", [])]
         remaining_users = [uid for uid in members if uid not in previous_winners]
-
-
-
+        
         if current_month == chit_group["duration"]:
             if len(remaining_users) != 1:
                 return JsonResponse({"error": "Cannot determine unique final winner."}, status=400)
@@ -571,6 +567,7 @@ class MarkPaymentDoneView(View):
             return JsonResponse({"error": str(e)}, status=500)
         except json.JSONDecodeError:
             return JsonResponse({"error": "Invalid JSON"}, status=400)
+          
 @method_decorator(csrf_exempt, name='dispatch')
 class MarkPaymentDoneView(View):
     def post(self, request, auction_id):
