@@ -75,12 +75,19 @@ def join_chit_group(request):
     group_name = group.get("group_name", "Unnamed Group")  # Fallback if not found
 
     # Add user to group's members list if not already
-    if user_id not in group.get("members", []):
+    if user_obj_id  not in group.get("members", []):
         chits_collection.update_one(
             {"_id": group_obj_id},
-            {"$addToSet": {"members": user_id}}  # Avoids duplicates
+            {"$addToSet": {"members": user_obj_id }}  # Avoids duplicates
         )
     group_type = group.get("type", "unknown")  
+    user = users_collection.find_one({"_id": user_obj_id})
+    if user:
+        for chit in user.get("joined_chits", []):
+            if chit.get("chit_group_id") == group_obj_id:
+                return Response({"message": "User already joined this chit group."}, status=200)
+
+
 
     # Prepare joined chit object
     joined_chit = {
@@ -94,17 +101,15 @@ def join_chit_group(request):
         "invoices": []
     }
 
-    # Add to user's joined_chits array
-    result = users_collection.update_one(
-        {"_id": user_obj_id},
-        {"$addToSet": {"joined_chits": joined_chit}}
-    )
-
-    if result.modified_count == 0:
-        return Response({"message": "User already joined this chit group."}, status=200)
+    users_collection.update_one(
+    {"_id": user_obj_id},
+    {"$addToSet": {"joined_chits": joined_chit}}
+)
 
     return Response({"message": "User successfully joined chit group."}, status=200)
 
+
+    # Add to user's joined_chits array
 @api_view(['GET'])
 def list_chit_groups(request):
     groups = list(chits_collection.find({}))  # don't filter out _id here

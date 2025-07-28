@@ -9,6 +9,7 @@ from datetime import datetime
 from db_conection import db
 from .serializers import AuctionSerializer, BidSerializer
 import json
+from rest_framework.response import Response
 
 auctions_collection = db['auctions']
 chits_collection = db['chit_groups']
@@ -22,6 +23,7 @@ def safe_objectid(val):
         return ObjectId(val)
     except Exception:
         return None
+    
 def serialize_doc(doc):
     if isinstance(doc, list):
         return [serialize_doc(d) for d in doc]
@@ -31,26 +33,50 @@ def serialize_doc(doc):
         for k, v in doc.items():
             if isinstance(v, ObjectId):
                 serialized[k] = str(v)
+            elif isinstance(v, datetime):
+                serialized[k] = v.isoformat()
             elif isinstance(v, list):
                 serialized[k] = [serialize_doc(i) for i in v]
             elif isinstance(v, dict):
                 serialized[k] = serialize_doc(v)
-            elif hasattr(v, 'isoformat'):  # datetime
-                serialized[k] = v.isoformat()
             else:
                 serialized[k] = v
         return serialized
 
     return doc
 
+def convert_object_ids(doc):
+    if isinstance(doc, list):
+        return [convert_object_ids(item) for item in doc]
+    elif isinstance(doc, dict):
+        new_doc = {}
+        for k, v in doc.items():
+            if isinstance(v, ObjectId):
+                new_doc[k] = str(v)
+            elif isinstance(v, datetime):
+                new_doc[k] = v  # DRF can handle datetime
+            elif isinstance(v, list):
+                new_doc[k] = convert_object_ids(v)
+            elif isinstance(v, dict):
+                new_doc[k] = convert_object_ids(v)
+            else:
+                new_doc[k] = v
+        return new_doc
+    return doc
 @method_decorator(csrf_exempt, name='dispatch')
 class ActiveAuctionsView(View):
     def get(self, request):
         try:
             auctions = list(auctions_collection.find({"status": "active"}))
+            
+            # Serialize all ObjectIds and nested fields
+            cleaned_auctions = convert_object_ids(auctions)
+            serializer = AuctionSerializer(cleaned_auctions, many=True)
+            return JsonResponse(convert_object_ids(auctions), safe=False, json_dumps_params={'default': str})
             return JsonResponse(serialize_doc(auctions), safe=False)
         except PyMongoError as e:
-            return JsonResponse({"error": str(e)}, status=500)
+            return JsonResponse({"error": str(e)}, status=500)  
+
 
 @method_decorator(csrf_exempt, name='dispatch')
 class AuctionDetailView(View):
@@ -162,8 +188,11 @@ class CloseAuctionView(View):
             })
 
         # Final Month – Auto Winner
-        previous_winners = chit_group.get("winners", [])
+        # previous_winners = chit_group.get("winners", [])
+        # remaining_users = [uid for uid in members if uid not in previous_winners]
+        previous_winners = [str(wid) for wid in chit_group.get("winners", [])]
         remaining_users = [uid for uid in members if uid not in previous_winners]
+
 
         if current_month == chit_group["duration"]:
             if len(remaining_users) != 1:
@@ -453,3 +482,28 @@ class InvoiceDetailView(View):
             return JsonResponse({"error": "Invoice not found."}, status=404)
 
         return JsonResponse(serialize_doc(invoice), status=200)
+
+@method_decorator(csrf_exempt, name='dispatch')
+class MarkPaymentDoneView(View):
+    def post(self, request, auction_id):
+        import json
+        try:
+            data = json.loads(request.body)
+            user_id = data.get("user_id")
+
+            if not ObjectId.is_valid(auction_id) or not ObjectId.is_valid(user_id):
+                return JsonResponse({"error": "Invalid auction ID or user ID"}, status=400)
+
+            result = auctions_collection.update_one(
+                {"_id": ObjectId(auction_id)},
+                {"$addToSet": {"aid": ObjectId(user_id)}}  # ensures no duplicates
+            )
+
+            if result.modified_count == 1:
+                return JsonResponse({"message": "Payment marked successfully"}, status=200)
+            else:
+                return JsonResponse({"message": "User was already marked as paid or auction not found"}, status=200)
+        except PyMongoError as e:
+            return JsonResponse({"error": str(e)}, status=500)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
