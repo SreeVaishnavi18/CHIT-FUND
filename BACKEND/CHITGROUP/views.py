@@ -12,44 +12,75 @@ from datetime import datetime
 from db_conection import db
 chits_collection = db['chit_groups']
 users_collection = db['user']
+
 @api_view(['POST'])
 def create_chit_group(request):
-    # data = request.data
     serializer = ChitGroupSerializer(data=request.data)
     if serializer.is_valid():
         data = serializer.validated_data
 
-
-    # Check if user is admin 
+        # 🔐 Only admin allowed
         if data.get("created_by") != "admin123":
             return Response({"error": "Only admins can create chit groups."}, status=403)
 
-        start_date = data.get("start_date")
-        if isinstance(start_date, datetime):
-            start_datetime = start_date
-        else:
-            start_datetime = datetime.combine(start_date, datetime.min.time())
+        chit_value = data.get("chit_value")
+        total_members = data.get("total_members")
 
+        # 🕓 Joining window
+        try:
+            join_start = datetime.fromisoformat(request.data.get("join_start"))
+            join_end = datetime.fromisoformat(request.data.get("join_end"))
+        except Exception as e:
+            return Response({"error": "Invalid join_start or join_end format. Must be ISO datetime."}, status=400)
+
+        if join_end <= join_start:
+            return Response({"error": "Joining end time must be after start time."}, status=400)
+
+        # 📅 Convert start date (optional)
+        start_date = data.get("start_date")
+        if not isinstance(start_date, datetime):
+            start_datetime = datetime.combine(start_date, datetime.min.time())
+        else:
+            start_datetime = start_date
+
+        # ➕ Duration = members + 1
+        duration = total_members + 1
+
+        # 🏆 Prize Money: increasing from 50% to 100%
+        prize_money = []
+        min_percent = 50
+        max_percent = 100
+        if total_members > 0:
+            increment = (max_percent - min_percent) / (total_members - 1) if total_members > 1 else 0
+            for i in range(total_members):
+                percent = min_percent + i * increment
+                prize = int((percent / 100) * chit_value)
+                prize_money.append(prize)
+
+        # 📦 Final chit group object
         chit_group = {
             "group_name": data.get("group_name"),
-            "chit_value": data.get("chit_value"),
-            "duration": data.get("duration"),
-            "monthly_contribution": data.get("monthly_contribution"),
-            "total_members": data.get("total_members"),
-            "type": data.get('type'),
-            "start_date": start_datetime,   # ✅ fixed
+            "chit_value": chit_value,
+            "duration": duration,
+            "monthly_contribution": data.get("monthly_contribution", 0),
+            "total_members": total_members,
+            "type": data.get("type", "lotterybased"),
+            "start_date": start_datetime,
             "created_by": data.get("created_by"),
             "members": [],
             "status": "active",
             "current_month": 1,
             "min_bid_start_percent": 50,
             "min_bid_step": 5,
-            "prize_money": data.get("prize_money", [])
+            "prize_money": prize_money,
+            "join_start": join_start,
+            "join_end": join_end,
+            "winners": []
         }
 
-
         chits_collection.insert_one(chit_group)
-        return Response({"message": "Chit group created successfully."})
+        return Response({"message": "Chit group created successfully.", "prize_money": prize_money})
+    
     return Response(serializer.errors, status=400)
 
 @api_view(['POST'])
