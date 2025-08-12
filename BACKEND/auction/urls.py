@@ -4,6 +4,7 @@ from .views import (
     ActiveAuctionsView,
     AuctionDetailView,
     AuctionWinnerView,
+    ClosedAuctionsView,
     InvoiceDetailView,
     MarkPaymentDoneView,
     StartAuctionView,
@@ -17,6 +18,7 @@ from .views import (
 
 urlpatterns = [
     path('active/', ActiveAuctionsView.as_view(), name='active-auctions'),
+    path('closed/', ClosedAuctionsView.as_view(), name='closed-auctions'),
     path('<str:auction_id>/', AuctionDetailView.as_view(), name='auction-detail'),
     path('chitgroups/<str:chit_id>/auctions/start/', StartAuctionView.as_view(), name='start-auction'),
     path('<str:auction_id>/close/', CloseAuctionView.as_view(), name='close-auction'),

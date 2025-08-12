@@ -15,4 +15,17 @@ class ChitGroupSerializer(serializers.Serializer):
     prize_money = serializers.ListField(
         child=serializers.IntegerField(), required=False,allow_empty=True
     )
+    closed_auctions = serializers.SerializerMethodField()
 
+    def get__id(self, obj):
+        return str(obj.get("_id"))
+
+    def get_closed_auctions(self, obj):
+        chit_group_id = str(obj.get("_id"))
+        closed_auctions_data = self.context.get("closed_auctions_by_group_id", {})
+        return closed_auctions_data.get(chit_group_id, [])
+
+class ClosedAuctionSerializer(serializers.Serializer):
+    auction_id = serializers.CharField(source='_id')
+    auction_end_time = serializers.DateTimeField()
+    amount = serializers.IntegerField()
