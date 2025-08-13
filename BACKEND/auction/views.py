@@ -774,9 +774,10 @@ class MarkInvoicePaidView(View):
             data = json.loads(request.body)
             # auction_id = data.get("auction_id")
             auction_idd = safe_objectid(auction_id)
-            user_id = safe_objectid(data.get("user_id"))
+            user_id = data.get("user_id")
+            user_obj_id = safe_objectid(user_id)
 
-            if not auction_idd or not user_id:
+            if not auction_idd or not user_obj_id:
                 return JsonResponse({"error": "Missing auction_id or user_id"}, status=400)
 
             if not ObjectId.is_valid(auction_idd) or not ObjectId.is_valid(user_id):
@@ -795,6 +796,7 @@ class MarkInvoicePaidView(View):
             if result.modified_count == 1:
                 return JsonResponse({"message": "Invoice marked as paid"}, status=200)
             else:
+                print(result.modified_count)
                 return JsonResponse({"message": "Invoice not found or already paid"}, status=404)
 
         except PyMongoError as e:
