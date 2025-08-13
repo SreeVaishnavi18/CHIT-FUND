@@ -8,6 +8,9 @@ from db_conection import db
 from .serializers import UserSerializer, JoinedChitSerializer
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+from Crypto.PublicKey import RSA
+from Crypto.Cipher import PKCS1_v1_5
+import base64
 
 users_collection = db["user"]
 invoices_collection = db["invoices"]
@@ -19,14 +22,85 @@ def safe_objectid(value):
     except Exception:
         return None
 
+from django.http import HttpResponse
+
+def get_public_key(request):
+    with open("D:\CHIT-FUND\BACKEND\public.pem", "rb") as f:
+        public_key = f.read()
+    return HttpResponse(public_key, content_type="text/plain")
+
+@api_view(['POST'])
+def signup_user(request):
+    name = request.data.get("name")
+    email = request.data.get("email")
+    phone = request.data.get("phone")
+    address = request.data.get("address")
+    city = request.data.get("city")
+    pincode = request.data.get("pincode")
+    encrypted_password = request.data.get("password")  # encrypted if you want like login
+
+    if not all([name, email, phone, address, city, pincode, encrypted_password]):
+        return Response({"error": "All fields are required"}, status=400)
+
+    # Password decryption (if encrypted like login)
+    try:
+        with open(r"D:\CHIT-FUND\BACKEND\private.pem", "rb") as f:
+            private_key = RSA.import_key(f.read())
+        cipher_rsa = PKCS1_v1_5.new(private_key)
+        sentinel = b'Error'
+        encrypted_password_bytes = base64.b64decode(encrypted_password)
+        password = cipher_rsa.decrypt(encrypted_password_bytes, sentinel).decode('utf-8')
+    except Exception as e:
+        return Response({"error": "Password decryption failed"}, status=400)
+
+    # Check if email already exists
+    if users_collection.find_one({"email": email}):
+        return Response({"error": "Email already registered"}, status=409)
+
+    # Create username automatically from email prefix or name
+    username = email.split("@")[0]
+
+    # Insert into MongoDB
+    new_user = {
+        "username": username,
+        "name": name,
+        "email": email,
+        "phone": phone,
+        "address": address,
+        "city": city,
+        "pincode": pincode,
+        "password": password,  # store hashed ideally
+        "role": "user"
+    }
+    result = users_collection.insert_one(new_user)
+
+    return Response({
+        "message": "Signup successful",
+        "user_id": str(result.inserted_id),
+        "username": username
+    }, status=201)
 
 @api_view(['POST'])
 def login_user(request):
     username = request.data.get("username")
-    password = request.data.get("password")
+    encrypted_password = request.data.get("password")  # encrypted password (base64 string)
 
-    if not username or not password:
+    if not username or not encrypted_password:
         return Response({"error": "Username and password are required"}, status=400)
+
+    # Load private key once or per request (here for simplicity)
+    with open("D:\CHIT-FUND\BACKEND\private.pem", "rb") as f:
+        private_key = RSA.import_key(f.read())
+
+    cipher_rsa = PKCS1_v1_5.new(private_key)
+    sentinel = b'Error'
+
+    try:
+        encrypted_password_bytes = base64.b64decode(encrypted_password)
+        password = cipher_rsa.decrypt(encrypted_password_bytes,sentinel).decode('utf-8')
+    except Exception as e:
+        print("Decryption error: ",e)
+        return Response({"error": "Password decryption failed."}, status=400)
 
     user = users_collection.find_one({"username": username})
 
@@ -36,7 +110,6 @@ def login_user(request):
     if user.get("password") != password:
         return Response({"error": "Incorrect password"}, status=401)
 
-    # Determine role
     if username == "admin" and password == "admin123":
         role = "admin"
     else:
@@ -48,6 +121,35 @@ def login_user(request):
         "user_id": str(user["_id"]),
         "role": role
     })
+
+# @api_view(['POST'])
+# def login_user(request):
+#     username = request.data.get("username")
+#     password = request.data.get("password")
+
+#     if not username or not password:
+#         return Response({"error": "Username and password are required"}, status=400)
+
+#     user = users_collection.find_one({"username": username})
+
+#     if not user:
+#         return Response({"error": "User not found"}, status=404)
+
+#     if user.get("password") != password:
+#         return Response({"error": "Incorrect password"}, status=401)
+
+#     # Determine role
+#     if username == "admin" and password == "admin123":
+#         role = "admin"
+#     else:
+#         role = "user"
+
+#     return Response({
+#         "message": "Login successful",
+#         "username": username,
+#         "user_id": str(user["_id"]),
+#         "role": role
+#     })
 
 @method_decorator(csrf_exempt, name='dispatch')
 class UserMeView(View):
