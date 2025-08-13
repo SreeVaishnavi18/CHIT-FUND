@@ -25,7 +25,7 @@ def safe_objectid(value):
 from django.http import HttpResponse
 
 def get_public_key(request):
-    with open("D:\CHIT-FUND\BACKEND\public.pem", "rb") as f:
+    with open(r"C:\Users\Shiv\Desktop\MEGHA\SEM 9\SOA LAB\chit-fund-backennd\CHIT-FUND\BACKEND\public.pem", "rb") as f:
         public_key = f.read()
     return HttpResponse(public_key, content_type="text/plain")
 
@@ -89,7 +89,7 @@ def login_user(request):
         return Response({"error": "Username and password are required"}, status=400)
 
     # Load private key once or per request (here for simplicity)
-    with open("D:\CHIT-FUND\BACKEND\private.pem", "rb") as f:
+    with open(r"C:\Users\Shiv\Desktop\MEGHA\SEM 9\SOA LAB\chit-fund-backennd\CHIT-FUND\BACKEND\private.pem", "rb") as f:
         private_key = RSA.import_key(f.read())
 
     cipher_rsa = PKCS1_v1_5.new(private_key)

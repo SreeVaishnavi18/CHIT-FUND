@@ -118,7 +118,7 @@ if __name__ == "__main__":
 def run_prize_money_calculator():
     while True:
         finalize_chit_group_prizes()
-        time.sleep(30)  # Every 30 seconds (adjust as needed)
+        time.sleep(60)  # Every 30 seconds (adjust as needed)
 
 class ChitgroupConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
