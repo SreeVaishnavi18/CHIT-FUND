@@ -54,8 +54,8 @@ def create_chit_group(request):
             increment = (max_percent - min_percent) / (total_members - 1) if total_members > 1 else 0
             for i in range(total_members):
                 percent = min_percent + i * increment
-                prize = int((percent / 100) * chit_value)
-                prize_money.append(prize)
+                # prize = int((percent / 100) * chit_value)
+                # prize_money.append(prize)
 
         # 📦 Final chit group object
         chit_group = {
