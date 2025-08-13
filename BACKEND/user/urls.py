@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import MyInvoicesView, UserMeView, UserChitsView, UserInvoicesView,login_user
+from .views import MyInvoicesView, UserMeView, UserChitsView, UserInvoicesView,login_user,get_public_key,signup_user
 
 urlpatterns = [
     path('me/', UserMeView.as_view(), name='user-me'),
@@ -7,6 +7,9 @@ urlpatterns = [
     path('<str:user_id>/invoices/', UserInvoicesView.as_view(), name='user-invoices'),
     path('me/invoices/', MyInvoicesView.as_view(), name='me-invoices'),
     path('login/', login_user),
+    path('signup/',signup_user),
+    path('public-key/', get_public_key),
+
 
 
 ]
