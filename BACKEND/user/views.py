@@ -12,6 +12,9 @@ from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_v1_5
 import base64
 import requests
+import jwt
+from django.conf import settings
+from datetime import datetime, timedelta
 
 users_collection = db["user"]
 invoices_collection = db["invoices"]
@@ -26,7 +29,7 @@ def safe_objectid(value):
 from django.http import HttpResponse
 
 def get_public_key(request):
-    with open(r"C:\Users\Shiv\Desktop\MEGHA\SEM 9\SOA LAB\chit-fund-backennd\CHIT-FUND\BACKEND\public.pem", "rb") as f:
+    with open(r"D:\CHIT-FUND\BACKEND\public.pem", "rb") as f:
         public_key = f.read()
     return HttpResponse(public_key, content_type="text/plain")
 
@@ -68,7 +71,7 @@ def signup_user(request):
 
     # Password decryption (if encrypted like login)
     try:
-        with open(r"C:\Users\Shiv\Desktop\MEGHA\SEM 9\SOA LAB\chit-fund-backennd\CHIT-FUND\BACKEND\private.pem", "rb") as f:
+        with open(r"D:\CHIT-FUND\BACKEND\private.pem", "rb") as f:
             private_key = RSA.import_key(f.read())
         cipher_rsa = PKCS1_v1_5.new(private_key)
         sentinel = b'Error'
@@ -107,24 +110,32 @@ def signup_user(request):
 @api_view(['POST'])
 def login_user(request):
     username = request.data.get("username")
-    encrypted_password = request.data.get("password")  # encrypted password (base64 string)
+    password_input = request.data.get("password")  # encrypted password (base64 string)
 
-    if not username or not encrypted_password:
+    if not username or not password_input:
         return Response({"error": "Username and password are required"}, status=400)
-
-    # Load private key once or per request (here for simplicity)
-    with open(r"C:\Users\Shiv\Desktop\MEGHA\SEM 9\SOA LAB\chit-fund-backennd\CHIT-FUND\BACKEND\private.pem", "rb") as f:
-        private_key = RSA.import_key(f.read())
-
-    cipher_rsa = PKCS1_v1_5.new(private_key)
-    sentinel = b'Error'
-
+    
     try:
-        encrypted_password_bytes = base64.b64decode(encrypted_password)
-        password = cipher_rsa.decrypt(encrypted_password_bytes,sentinel).decode('utf-8')
-    except Exception as e:
-        print("Decryption error: ",e)
-        return Response({"error": "Password decryption failed."}, status=400)
+        # Try decoding the password
+        base64.b64decode(password_input)
+        is_encrypted = True
+    except Exception:
+        is_encrypted = False
+
+    if is_encrypted:
+        try:
+            with open(r"D:\CHIT-FUND\BACKEND\private.pem", "rb") as f:
+                private_key = RSA.import_key(f.read())
+
+            cipher_rsa = PKCS1_v1_5.new(private_key)
+            sentinel = b'Error'
+            encrypted_password_bytes = base64.b64decode(password_input)
+            password = cipher_rsa.decrypt(encrypted_password_bytes,sentinel).decode('utf-8')
+        except Exception as e:
+            print("Decryption error: ",e)
+            return Response({"error": "Password decryption failed."}, status=400)
+    else:
+        password=password_input
 
     user = users_collection.find_one({"username": username})
 
@@ -139,11 +150,20 @@ def login_user(request):
     else:
         role = "user"
 
+    payload = {
+        "user_id": str(user["_id"]),
+        "username": username,
+        "role": role,
+        "exp": datetime.utcnow() + settings.JWT_EXP_DELTA
+    }
+    token = jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+
     return Response({
         "message": "Login successful",
         "username": username,
         "user_id": str(user["_id"]),
-        "role": role
+        "role": role,
+        "token": token
     })
 
 # @api_view(['POST'])

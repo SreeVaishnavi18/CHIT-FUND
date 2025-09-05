@@ -7,7 +7,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from .serializers import ChitGroupSerializer
 from .models import ChitGroup
-
+from user.utils import verify_jwt
 from datetime import datetime
 from db_conection import db
 chits_collection = db['chit_groups']
@@ -15,13 +15,22 @@ users_collection = db['user']
 
 @api_view(['POST'])
 def create_chit_group(request):
+
+    decoded, error = verify_jwt(request)
+    if error:
+        return error  # Unauthorized
+    
+    if decoded.get("role") != "admin":
+        return Response({"error": "Only admins can create chit groups."}, status=403)
+
+
     serializer = ChitGroupSerializer(data=request.data)
     if serializer.is_valid():
         data = serializer.validated_data
 
-        # 🔐 Only admin allowed
-        if data.get("created_by") != "admin123":
-            return Response({"error": "Only admins can create chit groups."}, status=403)
+        # # 🔐 Only admin allowed
+        # if data.get("created_by") != "admin123":
+        #     return Response({"error": "Only admins can create chit groups."}, status=403)
 
         chit_value = data.get("chit_value")
         total_members = data.get("total_members")

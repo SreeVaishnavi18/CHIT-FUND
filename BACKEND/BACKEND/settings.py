@@ -130,3 +130,13 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+import os
+import datetime
+from dotenv import load_dotenv
+
+load_dotenv()
+
+JWT_SECRET = os.getenv("JWT_SECRET")
+
+JWT_ALGORITHM = "HS256"
+JWT_EXP_DELTA = datetime.timedelta(hours=5)  # token valid for 5 hrs

@@ -36,6 +36,6 @@ urlpatterns = [
     path('invoices/detail/<str:invoice_id>/', InvoiceDetailView.as_view(), name='invoice-detail'),
     path('<str:auction_id>/markpaid/', MarkInvoicePaidView.as_view()),
     path('<str:auction_id>/storepaid/', StoreInvoicePaidView.as_view()),
-    path('invoices-with-names/<str:user_id>/', UserInvoicesWithChitNameView.as_view(), name='user-invoices-with-names')
+    path('invoices-with-names/<str:user_id>/', UserInvoicesWithChitNameView.as_view(), name='user-invoices-with-names'),
     path('invoices-with-names/<str:user_id>/', UserInvoicesWithChitNameView.as_view(), name='user-invoices-with-names'),
 ]
