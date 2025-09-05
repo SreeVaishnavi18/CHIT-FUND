@@ -16,6 +16,9 @@ from .views import (
     UserInvoicesView,
     UserInvoicesWithChitNameView,
     UserWinsView,
+    UserInvoicesWithChitNameView,
+    MarkPaymentDoneView
+    
 )
 
 urlpatterns = [
@@ -34,4 +37,5 @@ urlpatterns = [
     path('<str:auction_id>/markpaid/', MarkInvoicePaidView.as_view()),
     path('<str:auction_id>/storepaid/', StoreInvoicePaidView.as_view()),
     path('invoices-with-names/<str:user_id>/', UserInvoicesWithChitNameView.as_view(), name='user-invoices-with-names')
+    path('invoices-with-names/<str:user_id>/', UserInvoicesWithChitNameView.as_view(), name='user-invoices-with-names'),
 ]

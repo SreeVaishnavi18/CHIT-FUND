@@ -613,6 +613,8 @@ class CloseAuctionView(View):
             "invoices_generated": invoices_created
         })
 
+
+
 @method_decorator(csrf_exempt, name='dispatch')
 class AuctionBidsView(View):
     def get(self, request, auction_id):
@@ -825,6 +827,50 @@ class MarkInvoicePaidView(View):
             return JsonResponse({"error": str(e)}, status=500)
         except json.JSONDecodeError:
             return JsonResponse({"error": "Invalid JSON"}, status=400)
+        
+
+@method_decorator(csrf_exempt, name='dispatch')
+class MarkPaymentDoneView(View):
+    def post(self, request, auction_id):
+        import json
+        try:
+            data = json.loads(request.body)
+            user_id = data.get("user_id")
+
+            if not ObjectId.is_valid(auction_id) or not ObjectId.is_valid(user_id):
+                return JsonResponse({"error": "Invalid auction ID or user ID"}, status=400)
+
+            result = auctions_collection.update_one(
+                {"_id": ObjectId(auction_id)},
+                {"$addToSet": {"aid": ObjectId(user_id)}}  # ensures no duplicates
+            )
+
+            if result.modified_count == 1:
+                return JsonResponse({"message": "Payment marked successfully"}, status=200)
+            else:
+                return JsonResponse({"message": "User was already marked as paid or auction not found"}, status=200)
+        except PyMongoError as e:
+            return JsonResponse({"error": str(e)}, status=500)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+        
+
+class UserInvoicesWithChitNameView(View):
+    def get(self, request, user_id):
+        obj_id = safe_objectid(user_id)
+        if not obj_id:
+            return JsonResponse({"error": "Invalid user ID."}, status=400)
+
+        # Fetch invoices for this user
+        invoices = list(invoices_collection.find({"user_id": obj_id}))
+        
+        # Attach chit group name to each invoice
+        for inv in invoices:
+            chit = chits_collection.find_one({"_id": safe_objectid(inv["chit_group_id"])})
+            inv["chit_group_name"] = chit.get("group_name") if chit else "Unknown"
+
+        return JsonResponse(serialize_doc(invoices), safe=False)
+
 
 
 transactions = db['logs']
