@@ -8,7 +8,7 @@ from bson import ObjectId
 from pymongo.errors import PyMongoError
 from datetime import datetime
 from db_conection import db
-from .serializers import AuctionSerializer, BidSerializer
+from .serializers import AuctionSerializer, BidSerializer, TransactionSerializer
 import json
 from rest_framework.response import Response
 import requests
@@ -18,7 +18,7 @@ chits_collection = db['chit_groups']
 users_collection = db['user']
 invoices_collection = db['invoices']
 winners_collection = db['winners']
-EMAIL_API_URL = "http://192.168.167.21:5000/service/send_email"
+EMAIL_API_URL = "http://192.168.166.32:5000/service/send_email"
 
 def send_invoice_email(user_email, invoice):
     """
@@ -26,18 +26,36 @@ def send_invoice_email(user_email, invoice):
     """
     if not user_email:
         return False
+    body_text = f"""
+        Dear User,
 
+        Here are your invoice details for Chit Group {invoice['chit_group_id']}:
+
+        Month: {invoice['month']}
+        Invoice Type: {invoice['type'].capitalize()}
+        Amount Due: ₹{invoice['amount']:,}
+        Payment Status: {"Paid" if invoice['is_paid'] else "Pending"}
+        Issued On: {invoice['issued_on'].strftime('%d-%b-%Y %I:%M %p')}
+
+        Additional Details:
+        - Dividend: ₹{invoice['details']['dividend']:,}
+        - Winner Status: {"Yes" if invoice['details']['is_winner'] else "No"}
+        - Note: {invoice['details']['note']}
+
+        Thank you,
+        Lakshmi Chit Funds
+        """
     payload = {
         "from": "admin@lakshmi.com",
         "to": user_email,
         "subject": f"Invoice for Chit Group {invoice['chit_group_id']}",
-        "body": f"Dear User,\n\nPlease find your invoice details below:\n\n{invoice}",
+        "body":body_text,
         "attachment": None
     }
 
     headers = {
         "X-API-KEY": "0898c79d9edee1eaf79e1f97718ea84da47472f70884944ba1641b58ed24796c",
-        "X-CLIENT-SECRET": "gAAAAABonHWC_8L0gU4ztDHyN9fgk3FRcZ5KTc-TmJ72U4cyRCo9ATH_IUex-NrehgtsZaDxi9vl_vvpTgTKG2veDKGb07SOGeEeHxyLlSbMTw3Y7k_PVjWBT1Bqdxmakw-mhS6se6H4",
+        "X-CLIENT-SECRET": "gjpCS(sj{UOGE!p3*J=|?hzq^$@Tmot+",
         "Content-Type": "application/json"
     }
 
@@ -197,7 +215,7 @@ class StartAuctionView(View):
         if current_month is None or duration is None:
             return JsonResponse({"error": "Missing current_month or duration in chit group."}, status=400)
 
-        if current_month >= duration:
+        if current_month > duration:
             return JsonResponse({"error": "Chit group has already completed its full duration."}, status=400)
 
         # Check if auction is already active
@@ -223,6 +241,7 @@ class StartAuctionView(View):
 
             invoices = []
             for user_id in members:
+                user = users_collection.find_one({"_id": user_id})
                 invoice_doc = {
                     "user_id": user_id,
                     "chit_group_id": chit_obj_id,
@@ -234,10 +253,15 @@ class StartAuctionView(View):
                     "issued_on": datetime.utcnow(),
                     "details": {
                         "dividend": monthly_contribution,
-                        "is_winner": False  # Initially false, will update later if winner
+                        "is_winner": False,  # Initially false, will update later if winner
+                        "note": "Lottery based invoice"
                     }
                 }
                 invoices.append(invoice_doc)
+                user_email = user.get("email")
+                if user_email:
+                    var = send_invoice_email("megashri@gmail.com", invoice_doc)
+                    print(var)
 
             if invoices:
                 invoices_collection.insert_many(invoices)
@@ -263,13 +287,13 @@ class CloseAuctionView(View):
         members = chit_group.get("members", [])
         num_members = chit_group.get("total_members", len(members))
         monthly_contribution = chit_group["monthly_contribution"]
-        monthly_bids = chit_group.get("monthly_bid_values", {})
+        monthly_bids = chit_group.get("prize_money", {})
 
         invoices_created = 0
 
         # Organizer Commission Month (Month 2)
         if current_month == 2:
-            commission_amount = int(monthly_bids.get(str(current_month), 0))
+            commission_amount = monthly_bids[current_month]
             per_user_dividend = commission_amount // num_members
 
             for user_id in members:
@@ -296,7 +320,7 @@ class CloseAuctionView(View):
                 invoices_collection.insert_one(invoice)
                 user_email = user.get("email")
                 if user_email:
-                    var = send_invoice_email(user_email, invoice)
+                    var = send_invoice_email("megashri@gmail.com", invoice)
                     print(var)
 
                 invoices_created += 1
@@ -387,7 +411,7 @@ class CloseAuctionView(View):
                         invoices_collection.insert_one(invoice)
                         user_email = user.get("email")
                         if user_email:
-                            var = send_invoice_email(user_email, invoice)
+                            var = send_invoice_email("megashri@gmail.com", invoice)
                             print("mail sent" ,var)
 
                         invoices_created += 1
@@ -457,7 +481,7 @@ class CloseAuctionView(View):
                 invoices_collection.insert_one(invoice)
                 user_email = user.get("email")
                 if user_email:
-                    var = send_invoice_email(user_email, invoice)
+                    var = send_invoice_email("megashri@gmail.com", invoice)
                     print("mail sent ",var)
 
                 invoices_created += 1
@@ -553,7 +577,7 @@ class CloseAuctionView(View):
             invoices_collection.insert_one(invoice)
             user_email = user.get("email")
             if user_email:
-                var = send_invoice_email(user_email, invoice)
+                var = send_invoice_email("megashri@gmail.com", invoice)
                 print("sent mail ",var)
 
             invoices_created += 1
@@ -723,8 +747,6 @@ class AuctionWinnerView(View):
         winner = auction.get("winner")
         if not winner:
             return JsonResponse({"message": "No winner selected yet."}, status=200)
-
-        # 🛡️ Check if winner is a dict or string
         if isinstance(winner, dict):
             winner["user_id"] = str(winner["user_id"])
             return JsonResponse(winner)
@@ -850,4 +872,37 @@ class UserInvoicesWithChitNameView(View):
         return JsonResponse(serialize_doc(invoices), safe=False)
 
 
-          
+
+transactions = db['logs']
+class StoreInvoicePaidView(View):
+    def post(self, request, auction_id):
+        try:
+            data = request.data.copy()
+            data['auction_id'] = auction_id
+
+            serializer = TransactionSerializer(data=data)
+            if serializer.is_valid():
+                # Insert into MongoDB
+                transactions.insert_one(serializer.validated_data)
+                return Response({"message": "Transaction stored successfully."}, status=201)
+            else:
+                return Response(serializer.errors, status=400)
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
+        
+class UserInvoicesWithChitNameView(View):
+    def get(self, request, user_id):
+        obj_id = safe_objectid(user_id)
+        if not obj_id:
+            return JsonResponse({"error": "Invalid user ID."}, status=400)
+
+        # Fetch invoices for this user
+        invoices = list(invoices_collection.find({"user_id": obj_id}))
+        
+        # Attach chit group name to each invoice
+        for inv in invoices:
+            chit = chits_collection.find_one({"_id": safe_objectid(inv["chit_group_id"])})
+            inv["chit_group_name"] = chit.get("group_name") if chit else "Unknown"
+
+        return JsonResponse(serialize_doc(invoices), safe=False)

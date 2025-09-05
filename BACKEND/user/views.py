@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_v1_5
 import base64
+import requests
 
 users_collection = db["user"]
 invoices_collection = db["invoices"]
@@ -41,10 +42,33 @@ def signup_user(request):
 
     if not all([name, email, phone, address, city, pincode, encrypted_password]):
         return Response({"error": "All fields are required"}, status=400)
+    
+    verify_url = "http://192.168.169.109:5000/service/verify_email"
+    headers = {
+        # "X-API-KEY": "0898c79d9edee1eaf79e1f97718ea84da47472f70884944ba1641b58ed24796c",
+        # "X-CLIENT-SECRET": "gjpCS(sj{UOGE!p3*J=|?hzq^$@Tmot+",
+        "Content-Type": "application/json"
+    }
+    try:
+        verify_response = requests.post(
+            verify_url,
+            json={"email": "danusri@gmail.com"},
+            headers=headers,
+            timeout=5
+        )
+        verify_response.raise_for_status()  # raises for HTTP errors
+
+        verify_data = verify_response.json()
+        if not verify_data.get("verified", False):
+            return Response({"error": "Invalid email address"}, status=400)
+
+    except requests.RequestException as e:
+        return Response({"error": f"Email verification request failed: {e}"}, status=502)
+
 
     # Password decryption (if encrypted like login)
     try:
-        with open(r"D:\CHIT-FUND\BACKEND\private.pem", "rb") as f:
+        with open(r"C:\Users\Shiv\Desktop\MEGHA\SEM 9\SOA LAB\chit-fund-backennd\CHIT-FUND\BACKEND\private.pem", "rb") as f:
             private_key = RSA.import_key(f.read())
         cipher_rsa = PKCS1_v1_5.new(private_key)
         sentinel = b'Error'
