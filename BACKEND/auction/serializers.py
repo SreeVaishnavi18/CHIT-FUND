@@ -14,3 +14,15 @@ class BidSerializer(serializers.Serializer):
     user_id = serializers.CharField()
     amount = serializers.FloatField()
     bid_time = serializers.DateTimeField()
+
+class TransactionSerializer(serializers.Serializer):
+    txId = serializers.CharField(max_length=100)
+    reference = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    merchant = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    name = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    accountNumber = serializers.CharField(max_length=50)
+    ifsc = serializers.CharField(max_length=20)
+    amount = serializers.FloatField()
+    status = serializers.CharField(max_length=50)
+    timestamp = serializers.DateTimeField()
+    auction_id = serializers.CharField(max_length=100)  
