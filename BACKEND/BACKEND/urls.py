@@ -15,11 +15,15 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include,re_path
+
+from .views import AngularAppView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('CHITGROUP.urls')),  # Routes all /api/ URLs to chit app
     path('users/',include('user.urls')),
     path('auctions/',include('auction.urls')),
+    path("analytics/", include("analytics.urls")),
+    re_path(r'^.*$', AngularAppView.as_view(), name='angular-app'),
 ]

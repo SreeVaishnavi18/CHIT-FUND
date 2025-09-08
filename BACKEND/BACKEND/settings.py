@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -25,9 +26,15 @@ SECRET_KEY = 'django-insecure-kqti#1#n+6ui6xg!9+9@&pwag&q!%$6c6o=56a-aadak61r-tj
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 
+STATIC_URL = '/static/'
+
+# Point Django static to Angular build
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, "frontend"),  
+]
 # Application definition
 
 INSTALLED_APPS = [
@@ -38,7 +45,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'corsheaders',
-    'CHITGROUP.apps.ChitgroupConfig'
+    'CHITGROUP.apps.ChitgroupConfig',
+    "analytics"
 ]
 
 MIDDLEWARE = [
@@ -49,7 +57,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'corsheaders.middleware.CorsMiddleware'
+    'corsheaders.middleware.CorsMiddleware',
+    "analytics.middleware.CongestionMiddleware", 
 ]
 
 CORS_ALLOWED_ORIGINS = [
@@ -64,7 +73,7 @@ ROOT_URLCONF = 'BACKEND.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [os.path.join(BASE_DIR, "frontend")],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -79,7 +88,7 @@ TEMPLATES = [
 WSGI_APPLICATION = 'BACKEND.wsgi.application'
 
 
-# Database
+# Database          
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 DATABASES = {
@@ -140,3 +149,4 @@ JWT_SECRET = os.getenv("JWT_SECRET")
 
 JWT_ALGORITHM = "HS256"
 JWT_EXP_DELTA = datetime.timedelta(hours=5)  # token valid for 5 hrs
+MONGO_URI = "mongodb://localhost:27017/chit"
